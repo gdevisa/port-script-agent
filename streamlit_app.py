@@ -39,6 +39,7 @@ import asyncio
 import nest_asyncio
 import uuid 
 import chromadb
+from duckduckgo_search import DDGS
 
 chromadb.api.client.SharedSystemClient.clear_system_cache()
 
@@ -61,13 +62,6 @@ def call_model(state: State):
         "answer": response["answer"],
     }
 
-
-workflow = StateGraph(state_schema=State)
-workflow.add_edge(START, "model")
-workflow.add_node("model", call_model)
-
-memory = MemorySaver()
-app = workflow.compile(checkpointer=memory)
 
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
@@ -102,16 +96,8 @@ def find_port_id(destination):
         else:
             # Make the search request
             search_term = "Holland America.com " + destination
-            response = requests.post(
-                "https://html.duckduckgo.com/html/",
-                data={'q': search_term, 's': '0'},
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36'}
-            )
-            
-            # Parse the results
-            soup = BeautifulSoup(response.text, 'html.parser')
-            results = soup.select('.result')
-            first_link = results[0].select_one('.result__title a')['href']
+            response = DDGS().text(search_term)
+            first_link = response[0]['href']
         
             if all(word in first_link.lower() for word in words):
                 port_code = first_link[-3:]
@@ -127,18 +113,12 @@ def find_port_id(destination):
     return port_code, exc_url
 
 def get_port_info(destination):
+  
     words = destination.lower().replace(",", "").split()
     search_term = destination + "cruise port whatsinport"
-    response = requests.post(
-        "https://html.duckduckgo.com/html/",
-        data={'q': search_term, 's': '0'},
-        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36'}
-    )
 
-    # Parse the results
-    soup = BeautifulSoup(response.text, 'html.parser')
-    results = soup.select('.result')
-    first_result = results[0].select_one('.result__title a')['href']
+    response = DDGS().text(search_term)
+    first_result = response[0]['href']
 
     # If port page found
     if (words[0].lower() in first_result.lower() ) and ('whatsinport' in first_result.lower()):
@@ -310,7 +290,11 @@ for message in st.session_state.messages:
 # Create a chat input field to allow the user to enter a message. This will display
 # automatically at the bottom of the page.
 if prompt := st.chat_input("Enter your destination"):
-    
+       # Store and display the current prompt.
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
     port_info_flag = get_port_info(prompt)
     port_code, exc_url = find_port_id(prompt)
     retriever = scrape_holland(port_code, exc_url)
@@ -321,17 +305,19 @@ if prompt := st.chat_input("Enter your destination"):
     rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
     base_query = "Write me a script about {}".format(prompt)
-    
+
+    workflow = StateGraph(state_schema=State)
+    workflow.add_edge(START, "model")
+    workflow.add_node("model", call_model)
+
+    memory = MemorySaver()
+    agent = workflow.compile(checkpointer=memory)
+
     config = {"configurable": {"thread_id": id}}
-    result = app.invoke(
+    result = agent.invoke(
         {"input": base_query},
         config=config,
     )
-
-    # Store and display the current prompt.
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
 
     # Generate a response using the OpenAI API.
     stream = client.chat.completions.create(
