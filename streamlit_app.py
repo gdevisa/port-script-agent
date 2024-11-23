@@ -112,7 +112,7 @@ def find_port_id(destination):
     
     return port_code, exc_url
 
-def get_port_info(destination):
+def get_port_info(destination, vectorstore):
   
     words = destination.lower().replace(",", "").split()
     search_term = destination + "cruise port whatsinport"
@@ -139,14 +139,13 @@ def get_port_info(destination):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks  =  text_splitter.split_documents(port_docs)
         
-        global vectorstore
         vectorstore = Chroma.add_documents(documents=chunks)
     else:
         wiki_flag = False
     
     return wiki_flag
 
-def scrape_holland(port_code, exc_url):
+def scrape_holland(port_code, exc_url, vectorstore):
     if port_code != 'not found':
 
         # Load, chunk and index the contents of the blog.
@@ -157,12 +156,66 @@ def scrape_holland(port_code, exc_url):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks  =  text_splitter.split_documents(docs)
 
-        global vectorstore
         vectorstore.add_documents(documents=chunks)
 
     # Retrieve and generate using the relevant snippets of the blog.
     retriever = vectorstore.as_retriever()
     return retriever
+
+@st.cache_resource
+def initialize_rag():
+    """Initialize RAG components and return reusable objects"""
+    # Initialize core components
+    llm = ChatOpenAI(model="ft:gpt-4-0724:personal:script-test3:AOYaYI9l")
+    embeddings = OpenAIEmbeddings()
+    vectorstore = Chroma(
+        collection_name="port_profiles",
+        embedding_function=embeddings,
+        persist_directory=PERSIST_DIR
+    )
+    
+    ### Contextualize question ###
+    contextualize_q_system_prompt = (
+        "Given a chat history and the latest user question "
+        "which might reference context in the chat history, "
+        "formulate a standalone question which can be understood "
+        "without the chat history. Do NOT answer the question, "
+        "just reformulate it if needed and otherwise return it as is."
+    )
+
+    # Set up prompts
+    contextualize_q_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
+    
+    qa_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", template),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
+    
+    # Create the workflow
+    workflow = StateGraph(state_schema=State)
+    workflow.add_edge(START, "model")
+    workflow.add_node("model", call_model)
+    
+    memory = MemorySaver()
+    agent = workflow.compile(checkpointer=memory)
+    
+    return {
+        "llm": llm,
+        "vectorstore": vectorstore,
+        "agent": agent,
+        "contextualize_q_prompt": contextualize_q_prompt,
+        "qa_prompt": qa_prompt
+    }
+
 
 template = """
 You are a copywriting assistant helping write scripts about popular cruise destinations, for the requested destination. Provide specific and unique descriptions for each destination, avoiding generic or broad statements. Avoid referencing specific individuals (like tour guides, local experts, chefs) due to potential changes in their availability. Historical figures are an exception to this rule. Refrain from mentioning specific local businesses (e.g., restaurants, cafes, bars). Check sailing schedules for each region and refrain from mentioning seasons with no active cruise operation. Use "we recommend" instead of "it's recommended" to convey a more personal and collective suggestion. Always address guests in the second person to maintain a personal and engaging tone. Here follows the template for an output of a script, where you see brackets of different sorts ()<>that means it’s a guidance and shouldn’t be included in the output, blanks are for you to fill in:
@@ -240,41 +293,15 @@ st.write(
 # Ask user for their OpenAI API key via `st.text_input`.
 # Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
 # via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-  
+
+PERSIST_DIR = os.path.join(os.getcwd(), "chroma_db")
+
 id = uuid.uuid1() 
 id = str(id.int)
 
 openai_api_key = st.secrets["OPENAI_API_KEY"]
-    
-    # Create an OpenAI client.
-client = OpenAI(api_key=openai_api_key)
-llm = ChatOpenAI(model="ft:gpt-4o-2024-08-06:personal:script-test3:AOYaYI9l")
 
-vectorstore = Chroma(collection_name="example_collection", embedding_function=OpenAIEmbeddings())
-### Contextualize question ###
-contextualize_q_system_prompt = (
-    "Given a chat history and the latest user question "
-    "which might reference context in the chat history, "
-    "formulate a standalone question which can be understood "
-    "without the chat history. Do NOT answer the question, "
-    "just reformulate it if needed and otherwise return it as is."
-)
-contextualize_q_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", contextualize_q_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ]
-)
-
-qa_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", template),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ]
-)
-question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+rag_components = initialize_rag()
 
 
 # Create a session state variable to store the chat messages. This ensures that the
@@ -287,7 +314,6 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-first_run = True
 
 # Create a chat input field to allow the user to enter a message. This will display
 # automatically at the bottom of the page.
@@ -300,38 +326,36 @@ if prompt := st.chat_input("Enter your destination"):
 
     config = {"configurable": {"thread_id": id}}
     
-    if first_run:
-        port_info_flag = get_port_info(prompt)
-        port_code, exc_url = find_port_id(prompt)
-        retriever = scrape_holland(port_code, exc_url)
-
-        history_aware_retriever = create_history_aware_retriever(
-            llm, retriever, contextualize_q_prompt
-        )
-        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-
-        base_query = "Write me a script about {}".format(prompt)
-
-        workflow = StateGraph(state_schema=State)
-        workflow.add_edge(START, "model")
-        workflow.add_node("model", call_model)
-
-        memory = MemorySaver()
-        agent = workflow.compile(checkpointer=memory)
-
+    # Get port data
+    port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
+    port_code, exc_url = find_port_id(prompt)
     
-        result = agent.invoke(
+    # Get retriever with vectorstore
+    retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
+
+    # Create retrieval chain
+    history_aware_retriever = create_history_aware_retriever(
+        rag_components["llm"], 
+        retriever, 
+        rag_components["contextualize_q_prompt"]
+    )
+    
+    global rag_chain  # Make available to call_model
+    rag_chain = create_retrieval_chain(
+        history_aware_retriever, 
+        create_stuff_documents_chain(
+            rag_components["llm"], 
+            rag_components["qa_prompt"]
+        )
+    )
+
+    base_query = "Write me a script about {}".format(prompt)
+
+    with st.spinner('Generating response...'):
+        result = rag_components["agent"].invoke(
             {"input": base_query},
             config=config,
         )
-        first_run = False
-        
-    else:
-        result = agent.invoke(
-            {"input": prompt},
-            config=config,
-        )
-
     
     # Stream the response to the chat using `st.write_stream`, then store it in 
     # session state.
