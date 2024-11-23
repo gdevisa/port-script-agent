@@ -40,6 +40,8 @@ import nest_asyncio
 import uuid 
 import chromadb
 from duckduckgo_search import DDGS
+import subprocess
+import sys
 
 chromadb.api.client.SharedSystemClient.clear_system_cache()
 # Ensure Playwright is properly set up (downloads necessary browsers)
@@ -47,7 +49,7 @@ try:
     subprocess.check_call(["playwright", "install"])
 except Exception as e:
     print("Failed to install Playwright browsers:", e)
-    
+
 ### Statefully manage chat history ###
 class State(TypedDict):
     input: str
