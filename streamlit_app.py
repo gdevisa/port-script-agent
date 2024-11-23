@@ -96,7 +96,9 @@ def find_port_id(destination):
         else:
             # Make the search request
             search_term = "Holland America.com " + destination
-            response = DDGS().text(search_term)
+
+            ddgs = DDGS(timeout=20) 
+            response = ddgs.text(search_term, max_results=3)
             first_link = response[0]['href']
         
             if all(word in first_link.lower() for word in words):
@@ -117,7 +119,8 @@ def get_port_info(destination, vectorstore):
     words = destination.lower().replace(",", "").split()
     search_term = destination + "cruise port whatsinport"
 
-    response = DDGS().text(search_term)
+    ddgs = DDGS(timeout=20) 
+    response = ddgs.text(search_term, max_results=3)
     first_result = response[0]['href']
 
     # If port page found
@@ -139,7 +142,7 @@ def get_port_info(destination, vectorstore):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks  =  text_splitter.split_documents(port_docs)
         
-        vectorstore = Chroma.add_documents(documents=chunks)
+        vectorstore.add_documents(documents=chunks)
     else:
         wiki_flag = False
     
@@ -165,8 +168,13 @@ def scrape_holland(port_code, exc_url, vectorstore):
 @st.cache_resource
 def initialize_rag():
     """Initialize RAG components and return reusable objects"""
+
+    st.session_state.first_run = True
+
     # Initialize core components
-    llm = ChatOpenAI(model="ft:gpt-4-0724:personal:script-test3:AOYaYI9l")
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
+    client = OpenAI(api_key=openai_api_key)
+    llm = ChatOpenAI(model="ft:gpt-4o-2024-08-06:personal:script-test3:AOYaYI9l")
     embeddings = OpenAIEmbeddings()
     vectorstore = Chroma(
         collection_name="port_profiles",
@@ -174,6 +182,9 @@ def initialize_rag():
         persist_directory=PERSIST_DIR
     )
     
+    id = uuid.uuid1() 
+    id = str(id.int)
+
     ### Contextualize question ###
     contextualize_q_system_prompt = (
         "Given a chat history and the latest user question "
@@ -200,6 +211,16 @@ def initialize_rag():
         ]
     )
     
+    return {
+        "llm": llm,
+        "vectorstore": vectorstore,
+        "contextualize_q_prompt": contextualize_q_prompt,
+        "qa_prompt": qa_prompt,
+        "thread_id": id
+    }
+
+@st.cache_resource
+def initialize_agent():
     # Create the workflow
     workflow = StateGraph(state_schema=State)
     workflow.add_edge(START, "model")
@@ -207,14 +228,8 @@ def initialize_rag():
     
     memory = MemorySaver()
     agent = workflow.compile(checkpointer=memory)
-    
-    return {
-        "llm": llm,
-        "vectorstore": vectorstore,
-        "agent": agent,
-        "contextualize_q_prompt": contextualize_q_prompt,
-        "qa_prompt": qa_prompt
-    }
+    return agent
+
 
 
 template = """
@@ -282,84 +297,103 @@ If you don't know the answer or there is some information you're not sure, just 
 
 """
 
-# Show title and description.
-st.title("Port Profiles Script Writing Agent")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+def main():
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
+    # Add a button to clear all cache
+    if st.button("Clear All Cache"):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
 
-PERSIST_DIR = os.path.join(os.getcwd(), "chroma_db")
-
-id = uuid.uuid1() 
-id = str(id.int)
-
-openai_api_key = st.secrets["OPENAI_API_KEY"]
-
-rag_components = initialize_rag()
-
-
-# Create a session state variable to store the chat messages. This ensures that the
-# messages persist across reruns.
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Display the existing chat messages via `st.chat_message`.
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-
-# Create a chat input field to allow the user to enter a message. This will display
-# automatically at the bottom of the page.
-if prompt := st.chat_input("Enter your destination"):
-       
-       # Store and display the current prompt.    
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    config = {"configurable": {"thread_id": id}}
-    
-    # Get port data
-    port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
-    port_code, exc_url = find_port_id(prompt)
-    
-    # Get retriever with vectorstore
-    retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
-
-    # Create retrieval chain
-    history_aware_retriever = create_history_aware_retriever(
-        rag_components["llm"], 
-        retriever, 
-        rag_components["contextualize_q_prompt"]
-    )
-    
-    global rag_chain  # Make available to call_model
-    rag_chain = create_retrieval_chain(
-        history_aware_retriever, 
-        create_stuff_documents_chain(
-            rag_components["llm"], 
-            rag_components["qa_prompt"]
-        )
+    # Show title and description.
+    st.title("Port Profiles Script Writing Agent")
+    st.write(
+        "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
+        "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
+        "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
     )
 
-    base_query = "Write me a script about {}".format(prompt)
+    # Ask user for their OpenAI API key via `st.text_input`.
+    # Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
+    # via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
+    global PERSIST_DIR
+    PERSIST_DIR = os.path.join(os.getcwd(), "chroma_db")
 
-    with st.spinner('Generating response...'):
-        result = rag_components["agent"].invoke(
-            {"input": base_query},
-            config=config,
-        )
-    
-    # Stream the response to the chat using `st.write_stream`, then store it in 
-    # session state.
-    with st.chat_message("assistant"):
-        response = st.write(result["answer"])
-    
-    st.session_state.messages.append({"role": "assistant", "content": result['answer']})
+    rag_components = initialize_rag()
+
+    # Create a session state variable to store the chat messages. This ensures that the
+    # messages persist across reruns.
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Display the existing chat messages via `st.chat_message`.
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+
+    # Create a chat input field to allow the user to enter a message. This will display
+    # automatically at the bottom of the page.
+    if prompt := st.chat_input("Enter your destination"):
+        
+        # Store and display the current prompt.    
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        config = {"configurable": {"thread_id": rag_components["thread_id"]}}
+        if 'first_run' not in st.session_state:
+            st.session_state['first_run'] = True
+
+        if st.session_state.first_run:
+            # Get port data
+            port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
+            port_code, exc_url = find_port_id(prompt)
+            
+            # Get retriever with vectorstore
+            retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
+
+            # Create retrieval chain
+            history_aware_retriever = create_history_aware_retriever(
+                rag_components["llm"], 
+                retriever, 
+                rag_components["contextualize_q_prompt"]
+            )
+            
+            global rag_chain  # Make available to call_model
+            rag_chain = create_retrieval_chain(
+                history_aware_retriever, 
+                create_stuff_documents_chain(
+                    rag_components["llm"], 
+                    rag_components["qa_prompt"]
+                )
+            )
+
+            base_query = "Write me a script about {}".format(prompt)
+
+            st.session_state.agent = initialize_agent()
+
+            with st.spinner('Generating response...'):
+                result = st.session_state.agent.invoke(
+                    {"input": base_query},
+                    config=config,
+                )
+            
+            st.session_state.first_run = False
+        else:
+            with st.spinner('Generating response...'):
+                result = st.session_state.agent.invoke(
+                    {"input": prompt},
+                    config=config,
+                )
+        
+        # Stream the response to the chat using `st.write_stream`, then store it in 
+        # session state.
+        with st.chat_message("assistant"):
+            response = st.write(result["answer"])
+        
+        st.session_state.messages.append({"role": "assistant", "content": result['answer']})
+
+
+if __name__ == "__main__":
+    main()
