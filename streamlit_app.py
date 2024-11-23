@@ -242,7 +242,7 @@ st.write(
 # via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
   
 id = uuid.uuid1() 
-id = id.int
+id = str(id.int)
 
 openai_api_key = st.secrets["OPENAI_API_KEY"]
     
@@ -287,53 +287,55 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+first_run = True
+
 # Create a chat input field to allow the user to enter a message. This will display
 # automatically at the bottom of the page.
 if prompt := st.chat_input("Enter your destination"):
-       # Store and display the current prompt.
+       
+       # Store and display the current prompt.    
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    port_info_flag = get_port_info(prompt)
-    port_code, exc_url = find_port_id(prompt)
-    retriever = scrape_holland(port_code, exc_url)
-
-    history_aware_retriever = create_history_aware_retriever(
-        llm, retriever, contextualize_q_prompt
-    )
-    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-
-    base_query = "Write me a script about {}".format(prompt)
-
-    workflow = StateGraph(state_schema=State)
-    workflow.add_edge(START, "model")
-    workflow.add_node("model", call_model)
-
-    memory = MemorySaver()
-    agent = workflow.compile(checkpointer=memory)
-
     config = {"configurable": {"thread_id": id}}
-    result = agent.invoke(
-        {"input": base_query},
-        config=config,
-    )
+    
+    if first_run:
+        port_info_flag = get_port_info(prompt)
+        port_code, exc_url = find_port_id(prompt)
+        retriever = scrape_holland(port_code, exc_url)
 
-    # Generate a response using the OpenAI API.
-    stream = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.messages
-        ],
-        stream=True,
-    )
+        history_aware_retriever = create_history_aware_retriever(
+            llm, retriever, contextualize_q_prompt
+        )
+        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
-    config = {"configurable": {"thread_id": id}}
-    print(result["answer"])
+        base_query = "Write me a script about {}".format(prompt)
+
+        workflow = StateGraph(state_schema=State)
+        workflow.add_edge(START, "model")
+        workflow.add_node("model", call_model)
+
+        memory = MemorySaver()
+        agent = workflow.compile(checkpointer=memory)
+
+    
+        result = agent.invoke(
+            {"input": base_query},
+            config=config,
+        )
+        first_run = False
+        
+    else:
+        result = agent.invoke(
+            {"input": prompt},
+            config=config,
+        )
+
     
     # Stream the response to the chat using `st.write_stream`, then store it in 
     # session state.
     with st.chat_message("assistant"):
         response = st.write(result["answer"])
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    st.session_state.messages.append({"role": "assistant", "content": result['answer']})
