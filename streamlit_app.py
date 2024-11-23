@@ -42,6 +42,7 @@ import chromadb
 from duckduckgo_search import DDGS
 import subprocess
 import sys
+import time
 
 chromadb.api.client.SharedSystemClient.clear_system_cache()
 # Ensure Playwright is properly set up (downloads necessary browsers)
@@ -113,6 +114,7 @@ def find_port_id(destination):
                 exc_url = "https://www.hollandamerica.com/en/us/excursions?fq=portID:" + port_code
             else:
                 port_code = 'not found'
+                exc_url = ''
         
         print(port_code)
     except IndexError:
@@ -358,38 +360,32 @@ def main():
 
         if st.session_state.first_run:
             # Get port data
-            with st.spinner('Checking Cruise Port Wiki...'):
+            with st.status("Downloading data...", expanded=True) as status:
+                st.write("Checking Cruise Port Wiki...")
+            
                 port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
                 
                 if port_info_flag:
-                    with st.chat_message("assistant"):
-                        response = st.write("Found port info on wiki")
-            
-                    st.session_state.messages.append({"role": "assistant", "content": "Found port info on wiki"})
+                    st.write("Found port info on wiki")
                 else:
-                    with st.chat_message("assistant"):
-                        response = st.write("Didn't find port info on wiki")
+                    st.write("Didn't find port info on wiki")
             
-                    st.session_state.messages.append({"role": "assistant", "content": "Didn't find port info on wiki"})
-            
-            with st.spinner('Checking Holland\'s Website...'):
+                    
+                st.write('Checking Holland\'s Website...')
                 port_code, exc_url = find_port_id(prompt)
             
-            if port_code != 'not found':
-                with st.chat_message("assistant"):
-                        response = st.write("Found port page on Holland\'s website")
-            
-                st.session_state.messages.append({"role": "assistant", "content": "Found port page on Holland\'s website"})
-            else:
-                with st.chat_message("assistant"):
-                        response = st.write("Didn't find port page on Holland\'s website")
-            
-                st.session_state.messages.append({"role": "assistant", "content": "Didn't find port page on Holland\'s website"})
+                if port_code != 'not found':
+                    st.write("Found port page on Holland\'s website")
                 
-            # Get retriever with vectorstore
-            with st.spinner('Retrieving relevant data...'):
+                else:
+                    st.write("Didn't find port page on Holland\'s website")
+                
+                # Get retriever with vectorstore
+                st.write('Retrieving relevant data...')
                 retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
-
+                status.update(
+                                label="Download complete!", state="complete", expanded=True
+                            )
             # Create retrieval chain
             history_aware_retriever = create_history_aware_retriever(
                 rag_components["llm"], 
@@ -415,6 +411,7 @@ def main():
                     {"input": base_query},
                     config=config,
                 )
+            st.success("Done!")
             
             st.session_state.first_run = False
         else:
@@ -423,6 +420,7 @@ def main():
                     {"input": prompt},
                     config=config,
                 )
+            st.success("Done!")
         
         # Stream the response to the chat using `st.write_stream`, then store it in 
         # session state.
