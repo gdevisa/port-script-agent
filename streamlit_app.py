@@ -360,32 +360,41 @@ def main():
 
         if st.session_state.first_run:
             # Get port data
-            with st.status("Downloading data...", expanded=True) as status:
-                st.write("Checking Cruise Port Wiki...")
             
-                port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
-                
-                if port_info_flag:
+            with st.chat_message("assistant"):
+                    st.write("Sure! Let me see what I can do..")
+        
+            st.session_state.messages.append({"role": "assistant", "content": "Sure! Let me see what I can do.."})
+
+            port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
+            
+            if port_info_flag:
+                with st.chat_message("assistant"):
                     st.write("Found port info on wiki")
-                else:
+        
+                st.session_state.messages.append({"role": "assistant", "content": "Found port info on wiki"})
+            else:
+                with st.chat_message("assistant"):
                     st.write("Didn't find port info on wiki")
+        
+                st.session_state.messages.append({"role": "assistant", "content": "Didn't find port info on wiki"})
+        
+            port_code, exc_url = find_port_id(prompt)
             
-                    
-                st.write('Checking Holland\'s Website...')
-                port_code, exc_url = find_port_id(prompt)
+            if port_code != 'not found':
+                with st.chat_message("assistant"):
+                        st.write("Found port page on Holland\'s website")
             
-                if port_code != 'not found':
-                    st.write("Found port page on Holland\'s website")
+                st.session_state.messages.append({"role": "assistant", "content": "Found port page on Holland\'s website"})
+            else:
+                with st.chat_message("assistant"):
+                        rst.write("Didn't find port page on Holland\'s website")
+            
+                st.session_state.messages.append({"role": "assistant", "content": "Didn't find port page on Holland\'s website"})
                 
-                else:
-                    st.write("Didn't find port page on Holland\'s website")
-                
-                # Get retriever with vectorstore
-                st.write('Retrieving relevant data...')
-                retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
-                status.update(
-                                label="Download complete!", state="complete", expanded=True
-                            )
+            # Get retriever with vectorstore
+            retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
+            
             # Create retrieval chain
             history_aware_retriever = create_history_aware_retriever(
                 rag_components["llm"], 
@@ -411,7 +420,6 @@ def main():
                     {"input": base_query},
                     config=config,
                 )
-            st.success("Done!")
             
             st.session_state.first_run = False
         else:
@@ -420,7 +428,6 @@ def main():
                     {"input": prompt},
                     config=config,
                 )
-            st.success("Done!")
         
         # Stream the response to the chat using `st.write_stream`, then store it in 
         # session state.
