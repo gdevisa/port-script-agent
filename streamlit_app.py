@@ -308,12 +308,6 @@ If you don't know the answer or there is some information you're not sure, just 
 
 def main():
 
-    # Add a button to clear all cache
-    if st.button("Clear All Cache"):
-        st.cache_data.clear()
-        st.cache_resource.clear()
-        st.rerun()
-
     # Show title and description.
     st.title("Port Profiles Script Writing Agent")
     st.write(
@@ -322,7 +316,7 @@ def main():
                 \n- For the first query just enter your destination in the format "city, country" (e.g. "Horta, Portugal")
                 \n- You can ask for changes to the script in consecutive queries
                 \n- If you want to start on a script for another destination - refresh the page
-                \n- If something goes wrong click refresh the page or click 'Clear All Cache'
+                \n- If something goes wrong refresh the page or reach out
         """
     )
 
