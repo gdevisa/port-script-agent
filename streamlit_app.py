@@ -315,9 +315,13 @@ def main():
     # Show title and description.
     st.title("Port Profiles Script Writing Agent")
     st.write(
-        "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-        "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-        "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
+        """
+            Instructions:
+                \n- For the first query just enter your destination in the format "city, country" (e.g. "Horta, Portugal")
+                \n- You can ask for changes to the script in consecutive queries
+                \n- If you want to start on a script for another destination - refresh the page
+                \n- If something goes wrong click refresh the page or click 'Clear All Cache'
+        """
     )
 
     # Ask user for their OpenAI API key via `st.text_input`.
@@ -354,11 +358,37 @@ def main():
 
         if st.session_state.first_run:
             # Get port data
-            port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
-            port_code, exc_url = find_port_id(prompt)
+            with st.spinner('Checking Cruise Port Wiki...'):
+                port_info_flag = get_port_info(prompt, rag_components["vectorstore"])
+                
+                if port_info_flag:
+                    with st.chat_message("assistant"):
+                        response = st.write("Found port info on wiki")
             
+                    st.session_state.messages.append({"role": "assistant", "content": "Found port info on wiki"})
+                else:
+                    with st.chat_message("assistant"):
+                        response = st.write("Didn't find port info on wiki")
+            
+                    st.session_state.messages.append({"role": "assistant", "content": "Didn't find port info on wiki"})
+            
+            with st.spinner('Checking Holland\'s Website...'):
+                port_code, exc_url = find_port_id(prompt)
+            
+            if port_code != 'not found':
+                with st.chat_message("assistant"):
+                        response = st.write("Found port page on Holland\'s website")
+            
+                st.session_state.messages.append({"role": "assistant", "content": "Found port page on Holland\'s website"})
+            else:
+                with st.chat_message("assistant"):
+                        response = st.write("Didn't find port page on Holland\'s website")
+            
+                st.session_state.messages.append({"role": "assistant", "content": "Didn't find port page on Holland\'s website"})
+                
             # Get retriever with vectorstore
-            retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
+            with st.spinner('Retrieving relevant data...'):
+                retriever = scrape_holland(port_code, exc_url, rag_components["vectorstore"])
 
             # Create retrieval chain
             history_aware_retriever = create_history_aware_retriever(
