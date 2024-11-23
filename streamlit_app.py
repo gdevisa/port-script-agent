@@ -47,7 +47,7 @@ chromadb.api.client.SharedSystemClient.clear_system_cache()
 # Ensure Playwright is properly set up (downloads necessary browsers)
 try:
     subprocess.check_call(["playwright", "install"])
-    subprocess.check_call(["playwright", "install-deps"])
+    subprocess.check_call(["sudo", "playwright", "install-deps"])
 except Exception as e:
     print("Failed to install Playwright browsers:", e)
 
