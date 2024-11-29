@@ -39,7 +39,6 @@ import asyncio
 import nest_asyncio
 import uuid 
 import chromadb
-from duckduckgo_search import DDGS
 import subprocess
 import sys
 import time
@@ -105,8 +104,10 @@ def find_port_id(destination):
         ddgs = DDGS(timeout=20) 
         try:
             response = ddgs.text(search_term, max_results=3)
-        except RatelimitException:
+        except Exception:
+            logging.info("duckduck go exception")
             return 'not found', ''
+        
         first_link = response[0]['href']
     
         if all(word in first_link.lower() for word in words):
@@ -130,7 +131,8 @@ def get_port_info(destination, vectorstore):
     ddgs = DDGS(timeout=20) 
     try:
         response = ddgs.text(search_term, max_results=3)
-    except RatelimitException:
+    except Exception:
+        logging.info("duckduck go exception")
         return False
     first_result = response[0]['href']
 
