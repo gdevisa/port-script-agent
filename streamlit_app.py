@@ -110,7 +110,7 @@ def find_port_id(destination):
             return 'not found', ''
         
         #first_link = response[0]['href']
-        matching_href = next((item['href'] for item in response if destination in item['title'].lower()), None)
+        matching_href = next((item['href'] for item in response if words[0] in item['title'].lower()), None)
 
         if matching_href is not None:
             port_code = matching_href[-3:]
@@ -140,7 +140,7 @@ def get_port_info(destination, vectorstore):
     #first_result = response[0]['href']
 
     print(response)
-    matching_href = next((item['href'] for item in response if destination in item['title'].lower()), None)
+    matching_href = next((item['href'] for item in response if words[0] in item['title'].lower()), None)
 
     # If port page found
     if (matching_href is not None) and ('whatsinport' in matching_href.lower()):
