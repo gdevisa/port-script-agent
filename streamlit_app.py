@@ -190,11 +190,7 @@ def initialize_rag():
         persist_directory=PERSIST_DIR
     )
     
-    id = uuid.uuid1() 
-    id = str(id.int)
     
-    print(id)
-    logging.info("generated chat id " + id)
 
     ### Contextualize question ###
     contextualize_q_system_prompt = (
@@ -226,8 +222,7 @@ def initialize_rag():
         "llm": llm,
         "vectorstore": vectorstore,
         "contextualize_q_prompt": contextualize_q_prompt,
-        "qa_prompt": qa_prompt,
-        "thread_id": id
+        "qa_prompt": qa_prompt
     }
 
 @st.cache_resource
@@ -340,6 +335,13 @@ def main():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
+    if 'first_run' not in st.session_state:
+            st.session_state['first_run'] = True
+            id = uuid.uuid1() 
+            id = str(id.int)
+            st.session_state['chat_id'] = id
+            print(id)
+            logging.info("generated chat id " + id)
 
     # Create a chat input field to allow the user to enter a message. This will display
     # automatically at the bottom of the page.
@@ -350,9 +352,6 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        config = {"configurable": {"thread_id": rag_components["thread_id"]}}
-        if 'first_run' not in st.session_state:
-            st.session_state['first_run'] = True
 
         if st.session_state.first_run:
             # Get port data
@@ -409,6 +408,7 @@ def main():
 
             base_query = "Write me a script about {}".format(prompt)
 
+            config = {"configurable": {"thread_id": st.session_state['chat_id']}}
             st.session_state.agent = initialize_agent()
 
             with st.spinner('Generating response...'):
@@ -420,6 +420,8 @@ def main():
             st.session_state.first_run = False
         else:
             with st.spinner('Generating response...'):
+                logging.info("stored chat id " + st.session_state['chat_id'])
+                config = {"configurable": {"thread_id": st.session_state['chat_id']}}
                 result = st.session_state.agent.invoke(
                     {"input": prompt},
                     config=config,
