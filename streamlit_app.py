@@ -109,10 +109,11 @@ def find_port_id(destination):
             logging.info("duckduck go exception")
             return 'not found', ''
         
-        first_link = response[0]['href']
-    
-        if all(word in first_link.lower() for word in words):
-            port_code = first_link[-3:]
+        #first_link = response[0]['href']
+        matching_href = next((item['href'] for item in response if destination in item['title'].lower()), None)
+
+        if matching_href is not None:
+            port_code = matching_href[-3:]
             exc_url = "https://www.hollandamerica.com/en/us/excursions?fq=portID:" + port_code
         else:
             port_code = 'not found'
@@ -135,18 +136,19 @@ def get_port_info(destination, vectorstore):
     except Exception:
         logging.info("duckduck go exception")
         return False
-    first_result = response[0]['href']
-
     
+    #first_result = response[0]['href']
+
     print(response)
+    matching_href = next((item['href'] for item in response if destination in item['title'].lower()), None)
 
     # If port page found
-    if (words[0].lower() in first_result.lower() ) and ('whatsinport' in first_result.lower()):
+    if (matching_href is not None) and ('whatsinport' in matching_href.lower()):
 
         wiki_flag = True
         response = requests.get(
-        first_result,
-        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36'}
+            matching_href,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36'}
         )
 
         # Parse the results
@@ -154,7 +156,7 @@ def get_port_info(destination, vectorstore):
         port_info = soup.get_text(strip=True)
         print('got port info')
 
-        port_docs= [Document(page_content=port_info, metadata={'source': first_result})]
+        port_docs= [Document(page_content=port_info, metadata={'source': matching_href})]
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks  =  text_splitter.split_documents(port_docs)
