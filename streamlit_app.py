@@ -43,6 +43,7 @@ import subprocess
 import sys
 import time
 import logging
+from duckduckgo_search import DDGS
 
 # Configure logging
 logging.basicConfig(
