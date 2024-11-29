@@ -382,7 +382,7 @@ def main():
                 st.session_state.messages.append({"role": "assistant", "content": "Found port page on Holland\'s website"})
             else:
                 with st.chat_message("assistant"):
-                        rst.write("Didn't find port page on Holland\'s website")
+                        st.write("Didn't find port page on Holland\'s website")
             
                 st.session_state.messages.append({"role": "assistant", "content": "Didn't find port page on Holland\'s website"})
                 
