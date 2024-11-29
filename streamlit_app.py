@@ -117,7 +117,7 @@ def find_port_id(destination):
                 exc_url = ''
         
         print(port_code)
-    except IndexError:
+    except IndexError or TimeoutError:
         port_code = 'not found'
         exc_url = ''
     
@@ -131,6 +131,9 @@ def get_port_info(destination, vectorstore):
     ddgs = DDGS(timeout=20) 
     response = ddgs.text(search_term, max_results=3)
     first_result = response[0]['href']
+
+    
+    print(response)
 
     # If port page found
     if (words[0].lower() in first_result.lower() ) and ('whatsinport' in first_result.lower()):
