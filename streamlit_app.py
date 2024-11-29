@@ -305,6 +305,15 @@ If you don't know the answer or there is some information you're not sure, just 
 
 def main():
 
+    if 'first_run' not in st.session_state:
+            st.session_state['first_run'] = True
+            id = uuid.uuid1() 
+            id = str(id.int)
+            st.session_state['chat_id'] = id
+            print(id)
+            logging.info("generated chat id " + id)
+
+
     # Show title and description.
     st.title("Port Profiles Script Writing Agent")
     st.write(
@@ -316,7 +325,8 @@ def main():
                 \n- If something goes wrong refresh the page or reach out
         """
     )
-
+    st.write("chat id - " + st.session_state['chat_id'])
+    
     # Ask user for their OpenAI API key via `st.text_input`.
     # Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
     # via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
@@ -335,13 +345,7 @@ def main():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if 'first_run' not in st.session_state:
-            st.session_state['first_run'] = True
-            id = uuid.uuid1() 
-            id = str(id.int)
-            st.session_state['chat_id'] = id
-            print(id)
-            logging.info("generated chat id " + id)
+    
 
     # Create a chat input field to allow the user to enter a message. This will display
     # automatically at the bottom of the page.
