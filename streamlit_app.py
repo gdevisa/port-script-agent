@@ -43,6 +43,14 @@ from duckduckgo_search import DDGS
 import subprocess
 import sys
 import time
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()]
+)
 
 chromadb.api.client.SharedSystemClient.clear_system_cache()
 # Ensure Playwright is properly set up (downloads necessary browsers)
@@ -184,6 +192,9 @@ def initialize_rag():
     
     id = uuid.uuid1() 
     id = str(id.int)
+    
+    print(id)
+    logging.info("generated chat id " + id)
 
     ### Contextualize question ###
     contextualize_q_system_prompt = (
