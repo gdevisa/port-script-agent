@@ -91,35 +91,40 @@ def find_port_id(destination):
     words = destination.strip().lower().split(",")
     formatted_dest = destination.lower().replace(", ", "+")
     url = "https://www.hollandamerica.com/en/us/global-search?searchTerm=" + formatted_dest
-    output = asyncio.run(scrape_website(url))
-
-    # Find the div with the specified class
-    wrap_div = output.find_all("div", class_="gloabl-search-result-data__list__wrap")
     try:
-        search_link = wrap_div[0].find("a").get("href")
-        
-        if all(word in search_link.lower() for word in words):
-            port_code = search_link[-3:]
-            exc_url = "https://www.hollandamerica.com/en/us/excursions?fq=portID:" + port_code
-        else:
-            # Make the search request
-            search_term = "Holland America.com " + destination
-
-            ddgs = DDGS(timeout=20) 
-            response = ddgs.text(search_term, max_results=3)
-            first_link = response[0]['href']
-        
-            if all(word in first_link.lower() for word in words):
-                port_code = first_link[-3:]
-                exc_url = "https://www.hollandamerica.com/en/us/excursions?fq=portID:" + port_code
-            else:
-                port_code = 'not found'
-                exc_url = ''
-        
-        print(port_code)
-    except IndexError or TimeoutError:
+        output = asyncio.run(scrape_website(url))
+    except TimeoutError:
         port_code = 'not found'
         exc_url = ''
+
+    if output:
+        # Find the div with the specified class
+        wrap_div = output.find_all("div", class_="gloabl-search-result-data__list__wrap")
+        try:
+            search_link = wrap_div[0].find("a").get("href")
+            
+            if all(word in search_link.lower() for word in words):
+                port_code = search_link[-3:]
+                exc_url = "https://www.hollandamerica.com/en/us/excursions?fq=portID:" + port_code
+            else:
+                # Make the search request
+                search_term = "Holland America.com " + destination
+
+                ddgs = DDGS(timeout=20) 
+                response = ddgs.text(search_term, max_results=3)
+                first_link = response[0]['href']
+            
+                if all(word in first_link.lower() for word in words):
+                    port_code = first_link[-3:]
+                    exc_url = "https://www.hollandamerica.com/en/us/excursions?fq=portID:" + port_code
+                else:
+                    port_code = 'not found'
+                    exc_url = ''
+            
+            print(port_code)
+        except IndexError:
+            port_code = 'not found'
+            exc_url = ''
     
     return port_code, exc_url
 
