@@ -88,7 +88,7 @@ async def scrape_website(url):
         return soup  # Return the extracted data
 
 def find_port_id(destination):
-    words = destination.lower().replace(",", "").split()
+    words = destination.strip().lower().split(",")
     formatted_dest = destination.lower().replace(", ", "+")
     url = "https://www.hollandamerica.com/en/us/global-search?searchTerm=" + formatted_dest
     output = asyncio.run(scrape_website(url))
@@ -125,7 +125,7 @@ def find_port_id(destination):
 
 def get_port_info(destination, vectorstore):
   
-    words = destination.lower().replace(",", "").split()
+    words = destination.strip().lower().split(",")
     search_term = destination + "cruise port whatsinport"
 
     ddgs = DDGS(timeout=20) 
